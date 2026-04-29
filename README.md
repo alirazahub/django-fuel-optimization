@@ -1,73 +1,97 @@
-# Fuel Route Optimization API
+# Fuel Route Optimizer
 
-A Django REST API that calculates optimal fuel stops along a route within the USA, finding the most cost-effective stations based on current fuel prices.
+Django + Django REST Framework app that plans a **driving route** in the USA (Google Directions), suggests **fuel stops** along the way using **retail prices from a bundled CSV**, and estimates **total fuel cost** at a fixed **10 MPG**.
 
 ## Features
 
-- ✅ Accepts start and finish locations within the USA
-- ✅ Returns route map data with polyline for visualization
-- ✅ Identifies optimal fuel stop locations along the route
-- ✅ Finds cost-effective fuel stations (cheapest prices within 50-mile radius)
-- ✅ Handles 500-mile maximum vehicle range between fuel stops
-- ✅ Supports multiple fuel stops for long journeys
-- ✅ Calculates total fuel cost based on 10 MPG fuel consumption
+- Web UI and **REST API** for start/end locations (USA-oriented).
+- **Google Maps Directions API** for route distance and overview polyline.
+- **Google Geocoding API** at route checkpoints (state + locality) to narrow CSV rows.
+- **Retail prices** from `fuel_opt/scripts/fuel-prices-for-be-assessment.csv` (no database import).
+- Fuel checkpoints every **~500 miles** along the route (configurable `max_stops` cap).
+- **Response caching** for identical start/end pairs (see environment variables).
+- Optional **Redis** cache backend; defaults to **in-memory** cache if Redis is disabled.
 
 ## Requirements
 
-- Python 3.x
-- Django 5.2+
-- Django REST Framework
-- Google Maps API Key
-- pandas, requests, python-decouple
+- Python 3.10+ (tested with 3.13)
+- Google Cloud API key with **Directions** and **Geocoding** enabled (same key as used for Maps JavaScript on the home page).
+
+## Project layout
+
+```
+django/
+├── README.md                 # This file
+└── fuel_route/               # Django project root (contains manage.py)
+    ├── manage.py
+    ├── requirements.txt
+    ├── .env                  # Create locally (not committed)
+    ├── fuel_route/           # Settings package
+    │   └── settings.py
+    └── fuel_opt/             # Main app
+        ├── views.py          # Home + POST /api/route/
+        ├── urls.py
+        ├── services/
+        │   ├── google_maps.py   # Directions + reverse geocode
+        │   ├── fuel_optimizer.py
+        │   └── fuel_prices_csv.py
+        └── scripts/
+            └── fuel-prices-for-be-assessment.csv
+```
 
 ## Installation
 
-1. Clone the repository:
+From the directory that contains `manage.py` (`fuel_route/`):
+
 ```bash
-git clone https://github.com/alirazahub/fuel_optimization-django
-cd fuel_route
+python -m venv .venv
+# Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+# Linux/macOS:
+# source .venv/bin/activate
+
+pip install -r requirements.txt
 ```
 
-2. Install dependencies:
-```bash
-pip install django djangorestframework pandas requests python-decouple
-```
+Create `.env` in `fuel_route/` (same folder as `manage.py`):
 
-3. Set up environment variables:
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and add your Google Maps API key:
-```
-GOOGLE_MAPS_API_KEY=your_actual_api_key_here
-SECRET_KEY=your_django_secret_key
+```env
+SECRET_KEY=your-secret-key-here
 DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
+GOOGLE_MAPS_API_KEY=your_google_maps_key
+
+# Optional: Redis for shared cache across processes (default = off)
+USE_REDIS_CACHE=False
+REDIS_URL=redis://127.0.0.1:6379/1
+
+# Optional tuning
+ROUTE_API_CACHE_TIMEOUT=3600
+GOOGLE_MAPS_HTTP_TIMEOUT=10
 ```
 
-4. Run migrations:
+Apply migrations:
+
 ```bash
 python manage.py migrate
 ```
 
-5. Import fuel station data:
-```bash
-python fuel_opt/scripts/import_fuel_stations.py
-```
+Run the dev server:
 
-6. Run the server:
 ```bash
 python manage.py runserver
 ```
 
-## API Usage
+Open **http://127.0.0.1:8000/** for the UI, or call the API below.
 
-### Endpoint
-```
-POST /api/route/
-```
+There is **no** separate data import step: the CSV ships with the repo under `fuel_opt/scripts/`.
 
-### Request Body
+## API
+
+### `POST /api/route/`
+
+**Body (JSON):**
+
 ```json
 {
   "start": "New York, NY",
@@ -75,137 +99,67 @@ POST /api/route/
 }
 ```
 
-### Response
+**Response (shape):**
+
 ```json
 {
   "distance_miles": 2789.45,
   "route": {
-    "polyline": "encoded_polyline_string_for_map_visualization",
+    "polyline": "_p~...F~...",
     "start_address": "New York, NY, USA",
     "end_address": "Los Angeles, CA, USA"
   },
   "fuel_stops": [
     {
-      "name": "PILOT TRAVEL CENTER #1243",
-      "address": "123 Highway Rd",
-      "city": "Phoenix",
-      "state": "AZ",
-      "price": 3.45,
-      "lat": 33.0048734,
-      "lng": -112.657226
+      "name": "EXAMPLE TRUCK STOP",
+      "address": "I-40, EXIT 123",
+      "city": "Example City",
+      "state": "OK",
+      "full_address": "I-40, EXIT 123, Example City, OK, USA",
+      "price": 3.0073
     }
   ],
-  "total_fuel_cost": 963.47,
+  "total_fuel_cost": 842.12,
   "fuel_consumption_gallons": 278.95
 }
 ```
 
-### Parameters Explanation
-- **distance_miles**: Total route distance in miles
-- **route**: Contains polyline for map rendering and start/end addresses
-  - **polyline**: Encoded polyline string (can be decoded and displayed on Google Maps)
-  - **start_address**: Full formatted start address
-  - **end_address**: Full formatted end address
-- **fuel_stops**: Array of optimal fuel stations along the route
-  - Stations are selected every 500 miles (or less)
-  - Each station is the cheapest within a 50-mile radius
-- **total_fuel_cost**: Total estimated fuel cost in USD
-- **fuel_consumption_gallons**: Total gallons needed (distance ÷ 10 MPG)
+- **`fuel_stops`**: Cheapest matching CSV row per checkpoint region (US state from reverse geocode; locality matched against CSV `City` when available). Pins on the map use **`full_address`** and the browser **Geocoder** (coordinates are not stored on CSV rows).
+- **`total_fuel_cost`**: Uses **10 MPG** and the **average** of selected stop **Retail Price** values from the CSV.
 
-## How It Works
+### Example `curl`
 
-1. **Route Calculation**: Uses Google Maps Directions API to get the route
-2. **Fuel Stop Points**: Identifies points along the route every 500 miles
-3. **Station Selection**: For each stop point, finds the cheapest fuel station within 50 miles
-4. **Cost Calculation**: Computes total fuel cost using 10 MPG and average station prices
-
-## Configuration
-
-### Vehicle Range
-Default: 500 miles. Can be adjusted in `fuel_opt/services/fuel_optimizer.py`:
-```python
-def extract_fuel_stop_points(route, max_range=500):
-```
-
-### Search Radius
-Default: 50 miles. Can be adjusted in `fuel_opt/services/fuel_optimizer.py`:
-```python
-def find_cheapest_station(lat, lng, radius=50):
-```
-
-### Fuel Efficiency
-Default: 10 MPG. Can be adjusted in `fuel_opt/services/fuel_optimizer.py`:
-```python
-def calculate_cost(total_miles, stations):
-    gallons = total_miles / 10  # Change this value
-```
-
-## Data Model
-
-### FuelStation
-- `name`: Station name
-- `address`: Street address
-- `city`: City
-- `state`: State abbreviation
-- `price`: Current fuel price per gallon
-- `latitude`: GPS latitude
-- `longitude`: GPS longitude
-
-## Testing
-
-Test the API using curl:
 ```bash
-curl -X POST http://localhost:8000/api/route/ \
-  -H "Content-Type: application/json" \
-  -d '{"start": "Chicago, IL", "end": "Miami, FL"}'
+curl -s -X POST http://127.0.0.1:8000/api/route/ ^
+  -H "Content-Type: application/json" ^
+  -d "{\"start\": \"Chicago, IL\", \"end\": \"Denver, CO\"}"
 ```
 
-Or use tools like Postman, Thunder Client, or the Django REST Framework browsable API at:
-```
-http://localhost:8000/api/route/
-```
+(Use `\` line continuation instead of `^` on Linux/macOS.)
 
-## Admin Panel
+## How it works (short)
 
-Access the Django admin panel to manage fuel stations:
-```
-http://localhost:8000/admin/
-```
+1. **Directions** — `origin` / `destination` strings → route, leg distance, step geometry.
+2. **Checkpoints** — Walk the leg; every ~500 miles (and up to a small max number of stops), take the step end as a checkpoint `(lat, lng)`.
+3. **Reverse geocode** each unique checkpoint → **state** (+ **locality** when present), cached.
+4. **CSV** — Load and dedupe rows; index by `State`; filter by state and optional city/locality match; pick **minimum `Retail Price`** in that pool for the stop.
+5. **Cache** — Full JSON for `start|end` is cached (`ROUTE_API_CACHE_TIMEOUT`). Geocode results are cached under Django’s `default` cache.
 
-Create a superuser:
-```bash
-python manage.py createsuperuser
-```
+## Caching: Redis vs local
 
-## Project Structure
+| `USE_REDIS_CACHE` | Backend | Notes |
+|-------------------|---------|--------|
+| `False` (default) | `LocMemCache` | Fast on one dev server process; cache is **not** shared across workers or restarts. |
+| `True` | `django_redis` + `REDIS_URL` | Use when Redis (local, Docker, or cloud) is running and reachable. |
 
-```
-fuel_route/
-├── fuel_opt/               # Main app
-│   ├── models.py          # FuelStation model
-│   ├── views.py           # API endpoint
-│   ├── urls.py            # App URL routing
-│   ├── services/
-│   │   ├── google_maps.py # Google Maps integration
-│   │   ├── fuel_optimizer.py # Fuel stop calculation
-│   │   └── distance.py    # Haversine distance calculation
-│   └── scripts/
-│       └── import_fuel_stations.py # Data import script
-├── fuel_route/            # Project settings
-│   ├── settings.py
-│   └── urls.py
-└── manage.py
-```
+## Configuration knobs (code)
 
-## Assignment Requirements Checklist
+- **Range between stops / max stops:** `fuel_opt/services/fuel_optimizer.py` → `extract_fuel_stop_points(..., max_range=500, max_stops=3)`.
+- **MPG for cost:** `calculate_cost` → `gallons = total_miles / 10`.
 
-✅ **API accepts start and finish location within USA**  
-✅ **Returns map of the route** (polyline for visualization)  
-✅ **Shows optimal fuel stop locations along route**  
-✅ **Cost-effective based on fuel prices** (finds cheapest stations)  
-✅ **500-mile maximum range** (multiple fuel stops as needed)  
-✅ **Multiple fuel stops displayed** (array of stations)  
-✅ **Total money spent on fuel** (calculated at 10 MPG)
+## Admin
+
+Django admin is available if you use it; this app **does not** register fuel rows in the admin (data is CSV-driven).
 
 ## License
 
