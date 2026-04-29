@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fuel Route Optimizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .content-wrapper {
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 20px;
+            height: calc(100vh - 150px);
+        }
+
+        .form-section {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            overflow-y: auto;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #map {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            height: 100%;
+        }
+
+        .results {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        .results h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .result-item {
+            background: #f8f9fa;
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .result-label {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 3px;
+        }
+
+        .result-value {
+            color: #333;
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+
+        .fuel-stop {
+            background: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .fuel-stop-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+            font-size: 1em;
+        }
+
+        .fuel-stop-details {
+            color: #666;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+
+        .fuel-stop-price {
+            color: #27ae60;
+            font-weight: 600;
+            font-size: 1.1em;
+            margin-top: 5px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            color: #667eea;
+            margin-top: 10px;
+            font-size: 0.95em;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 4px solid #c33;
+            display: none;
+        }
+
+        .error.show {
+            display: block;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2196f3;
+        }
+
+        .info-box p {
+            color: #1565c0;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 1024px) {
+            .content-wrapper {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 500px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Fuel Route Optimizer</h1>
+        
+        <div class="content-wrapper">
+            <div class="form-section">
+                <div class="info-box">
+                    <p><strong>Plan your trip!</strong><br>
+                    Enter start and end locations in the USA. We'll find the cheapest fuel stops along your route (500-mile range, 10 MPG).</p>
+                </div>
+
+                <form id="routeForm">
+                    <div class="form-group">
+                        <label for="start">Start Location</label>
+                        <input type="text" id="start" name="start" placeholder="e.g., New York, NY" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="end">End Location</label>
+                        <input type="text" id="end" name="end" placeholder="e.g., Los Angeles, CA" required>
+                    </div>
+                    
+                    <button type="submit" id="submitBtn">Calculate Route</button>
+                    <div class="loading" id="loading">⏳ Calculating optimal route...</div>
+                    <div class="error" id="error"></div>
+                </form>
+
+                <div class="results" id="results" style="display: none;">
+                    <h2>📊 Trip Summary</h2>
+                    
+                    <div class="result-item">
+                        <div class="result-label">Total Distance</div>
+                        <div class="result-value" id="distance">-</div>
+                    </div>
+                    
+                    <div class="result-item">
+                        <div class="result-label">Fuel Consumption</div>
+                        <div class="result-value" id="gallons">-</div>
+                    </div>
+                    
+                    <div class="result-item">
+                        <div class="result-label">Total Fuel Cost</div>
+                        <div class="result-value" id="cost">-</div>
+                    </div>
+
+                    <h2 style="margin-top: 25px;">⛽ Fuel Stops</h2>
+                    <div id="fuelStops"></div>
+                </div>
+            </div>
+
+            <div id="map"></div>
+        </div>
+    </div>
+
+    <script>
+        let map;
+        let directionsRenderer;
+        let directionsService;
+        let markers = [];
+
+        // Drop pin marker icons
+        const dropPinMarkers = {
+            red: 'data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40"%3E%3Cpath fill="%23f44336" d="M16 0C9.4 0 4 5.4 4 12c0 8 12 20 12 20s12-12 12-20c0-6.6-5.4-12-12-12z"/%3E%3Ccircle cx="16" cy="12" r="5" fill="white"/%3E%3C/svg%3E',
+            green: 'data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40"%3E%3Cpath fill="%234CAF50" d="M16 0C9.4 0 4 5.4 4 12c0 8 12 20 12 20s12-12 12-20c0-6.6-5.4-12-12-12z"/%3E%3Ccircle cx="16" cy="12" r="5" fill="white"/%3E%3C/svg%3E',
+            blue: 'data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40"%3E%3Cpath fill="%232196F3" d="M16 0C9.4 0 4 5.4 4 12c0 8 12 20 12 20s12-12 12-20c0-6.6-5.4-12-12-12z"/%3E%3Ccircle cx="16" cy="12" r="5" fill="white"/%3E%3C/svg%3E'
+        };
+
+        function initMap() {
+            // Initialize map centered on USA
+            map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 4,
+                center: { lat: 39.8283, lng: -98.5795 },
+                styles: [
+                    {
+                        featureType: "poi",
+                        elementType: "labels",
+                        stylers: [{ visibility: "off" }]
+                    }
+                ]
+            });
+
+            directionsService = new google.maps.DirectionsService();
+            directionsRenderer = new google.maps.DirectionsRenderer({
+                map: map,
+                suppressMarkers: true,
+                polylineOptions: {
+                    strokeColor: '#667eea',
+                    strokeWeight: 5,
+                    strokeOpacity: 0.8
+                }
+            });
+        }
+
+        document.getElementById('routeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const start = document.getElementById('start').value;
+            const end = document.getElementById('end').value;
+            const submitBtn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const results = document.getElementById('results');
+
+            // Clear previous results
+            results.style.display = 'none';
+            error.classList.remove('show');
+            loading.classList.add('show');
+            submitBtn.disabled = true;
+            
+            // Clear previous markers
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+
+            try {
+                const response = await fetch('/api/route/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ start, end })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to calculate route');
+                }
+
+                const data = await response.json();
+                
+                // Display results
+                document.getElementById('distance').textContent = `${data.distance_miles} miles`;
+                document.getElementById('gallons').textContent = `${data.fuel_consumption_gallons} gallons`;
+                document.getElementById('cost').textContent = `$${data.total_fuel_cost}`;
+
+                // Display fuel stops
+                const fuelStopsContainer = document.getElementById('fuelStops');
+                fuelStopsContainer.innerHTML = '';
+                
+                if (data.fuel_stops.length === 0) {
+                    fuelStopsContainer.innerHTML = '<div class="fuel-stop">No fuel stops needed for this short trip!</div>';
+                } else {
+                    const geocoder = new google.maps.Geocoder();
+                    const resolveStopLatLng = (stop) => {
+                        if (stop.lat != null && stop.lng != null) {
+                            return Promise.resolve({ lat: stop.lat, lng: stop.lng });
+                        }
+                        const addr = stop.full_address || `${stop.address}, ${stop.city}, ${stop.state}, USA`;
+                        return new Promise((resolve) => {
+                            geocoder.geocode({ address: addr }, (results, status) => {
+                                if (status === 'OK' && results[0]) {
+                                    const loc = results[0].geometry.location;
+                                    resolve({ lat: loc.lat(), lng: loc.lng() });
+                                } else resolve(null);
+                            });
+                        });
+                    };
+
+                    for (let index = 0; index < data.fuel_stops.length; index++) {
+                        const stop = data.fuel_stops[index];
+                        const addrLine = stop.full_address || `${stop.address}, ${stop.city}, ${stop.state}`;
+                        const pos = await resolveStopLatLng(stop);
+
+                        const stopDiv = document.createElement('div');
+                        stopDiv.className = 'fuel-stop';
+                        stopDiv.innerHTML = `
+                            <div class="fuel-stop-name">🔴 Stop ${index + 1}: ${stop.name}</div>
+                            <div class="fuel-stop-details">
+                                📍 ${addrLine}
+                            </div>
+                            <div class="fuel-stop-price">💰 $${stop.price}/gallon</div>
+                        `;
+                        fuelStopsContainer.appendChild(stopDiv);
+
+                        if (!pos) continue;
+
+                        const marker = new google.maps.Marker({
+                            position: pos,
+                            map: map,
+                            title: stop.name,
+                            label: {
+                                text: `${index + 1}`,
+                                color: 'white',
+                                fontWeight: 'bold'
+                            },
+                            icon: {
+                                url: dropPinMarkers.red,
+                                scaledSize: new google.maps.Size(32, 40),
+                                origin: new google.maps.Point(0, 0),
+                                anchor: new google.maps.Point(16, 40)
+                            }
+                        });
+
+                        const infoWindow = new google.maps.InfoWindow({
+                            content: `
+                                <div style="padding: 10px; max-width: 250px;">
+                                    <h3 style="margin: 0 0 8px 0; color: #333;">${stop.name}</h3>
+                                    <p style="margin: 5px 0; color: #666;">${addrLine}</p>
+                                    <p style="margin: 8px 0 0 0; font-weight: bold; color: #27ae60; font-size: 1.1em;">$${stop.price}/gallon</p>
+                                </div>
+                            `
+                        });
+
+                        marker.addListener('click', () => {
+                            infoWindow.open(map, marker);
+                        });
+
+                        markers.push(marker);
+                    }
+                }
+
+                results.style.display = 'block';
+
+                // Draw road-snapped route using Google DirectionsService
+                // Fallback to backend polyline only if this request fails.
+                let routePoints = [];
+                try {
+                    const directionsResult = await directionsService.route({
+                        origin: start,
+                        destination: end,
+                        travelMode: google.maps.TravelMode.DRIVING
+                    });
+                    directionsRenderer.setDirections(directionsResult);
+                    routePoints = directionsResult.routes[0].overview_path;
+                } catch (routeErr) {
+                    const decodedPath = google.maps.geometry.encoding.decodePath(data.route.polyline);
+                    const fallbackPath = new google.maps.Polyline({
+                        path: decodedPath,
+                        geodesic: false,
+                        strokeColor: '#667eea',
+                        strokeOpacity: 0.8,
+                        strokeWeight: 5
+                    });
+                    fallbackPath.setMap(map);
+                    routePoints = decodedPath;
+                }
+
+                // Add START location marker
+                const startMarker = new google.maps.Marker({
+                    position: routePoints[0],
+                    map: map,
+                    title: `START: ${start}`,
+                    icon: {
+                        url: dropPinMarkers.green,
+                        scaledSize: new google.maps.Size(35, 44),
+                        origin: new google.maps.Point(0, 0),
+                        anchor: new google.maps.Point(17.5, 44)
+                    }
+                });
+
+                const startWindow = new google.maps.InfoWindow({
+                    content: `<div style="padding: 10px; color: #333; font-weight: 600;"><strong>📍 START</strong><br><span style="color: #4CAF50;">${start}</span></div>`
+                });
+
+                startMarker.addListener('click', () => {
+                    startWindow.open(map, startMarker);
+                });
+
+                // Add END location marker
+                const endMarker = new google.maps.Marker({
+                    position: routePoints[routePoints.length - 1],
+                    map: map,
+                    title: `END: ${end}`,
+                    icon: {
+                        url: dropPinMarkers.red,
+                        scaledSize: new google.maps.Size(35, 44),
+                        origin: new google.maps.Point(0, 0),
+                        anchor: new google.maps.Point(17.5, 44)
+                    }
+                });
+
+                const endWindow = new google.maps.InfoWindow({
+                    content: `<div style="padding: 10px; color: #333; font-weight: 600;"><strong>🏁 END</strong><br><span style="color: #f44336;">${end}</span></div>`
+                });
+
+                endMarker.addListener('click', () => {
+                    endWindow.open(map, endMarker);
+                });
+
+                // Fit map to route bounds
+                const bounds = new google.maps.LatLngBounds();
+                routePoints.forEach(point => bounds.extend(point));
+                for (const stop of data.fuel_stops) {
+                    if (stop.lat != null && stop.lng != null) {
+                        bounds.extend({ lat: stop.lat, lng: stop.lng });
+                    }
+                }
+                markers.forEach(m => bounds.extend(m.getPosition()));
+                map.fitBounds(bounds);
+
+            } catch (err) {
+                error.textContent = `Error: ${err.message}. Please check your locations and try again.`;
+                error.classList.add('show');
+                console.error('Error:', err);
+            } finally {
+                loading.classList.remove('show');
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+    
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_key }}&libraries=geometry&callback=initMap" async defer></script>
+</body>
+</html>
